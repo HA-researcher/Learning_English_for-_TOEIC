@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英単語学習アプリ</title>
+    <style>
+        :root { --main-color: #007bff; --light-gray: #f8f9fa; --gray: #6c757d; --red: #dc3545; --green: #28a745; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background-color: var(--light-gray); display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 800px; background-color: #fff; margin: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; text-align: center; }
+        .controls, .quiz-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .controls input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; border: none; border-radius: 4px; color: #fff; cursor: pointer; transition: background-color 0.2s; }
+        .btn-primary { background-color: var(--main-color); }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-secondary { background-color: var(--gray); }
+        .btn-secondary:hover { background-color: #5a6268; }
+        .btn-success { background-color: var(--green); }
+        .btn-success:hover { background-color: #218838; }
+        #word-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
+        .word-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid #eee; }
+        .word-item.checked { background-color: #e9f5ff; }
+        .word-item input[type="checkbox"] { margin-top: 5px; width: 18px; height: 18px; }
+        .word-details { flex-grow: 1; }
+        .word-details .word { font-size: 1.2em; font-weight: bold; }
+        .word-details .pos { font-style: italic; color: var(--gray); margin-left: 8px; }
+        .word-details .example { color: #555; margin-top: 4px; font-size: 0.9em; }
+        #quiz-container, #feedback-container { display: none; padding: 20px; margin-top: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        #quiz-word { font-size: 2em; font-weight: bold; text-align: center; margin-bottom: 20px; }
+        #quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .option-btn { width: 100%; padding: 15px; background-color: #f1f1f1; color: #333; text-align: left; font-size: 1em; }
+        .option-btn:hover { background-color: #e0e0e0; }
+        #feedback-container { background-color: #fffbe6; border-color: #ffe58f; }
+        #feedback-container.correct { background-color: #e9f7ef; border-color: #a6d9b8; }
+        .feedback-word { font-size: 1.5em; }
+        .feedback-actions { margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>英単語学習アプリ</h1>
+        
+        <div class="controls">
+            <input type="text" id="json-files-input" value="Words_01.json" placeholder="Words_01.json, Words_02.json ...">
+            <button id="load-btn" class="btn-primary">🔄 読込</button>
+            <button id="export-btn" class="btn-secondary">📄 チェックした単語を保存</button>
+            <button id="start-quiz-btn" class="btn-success">🧠 4択テスト開始</button>
+        </div>
+
+        <div id="list-container">
+            <h2>単語リスト (<span id="word-count">0</span>)</h2>
+            <ul id="word-list"></ul>
+        </div>
+
+        <div id="quiz-container">
+            <h2 id="quiz-progress">4択テスト</h2>
+            <div id="quiz-word"></div>
+            <div id="quiz-options"></div>
+        </div>
+
+        <div id="feedback-container">
+            <h2 id="feedback-title">不正解... チェックリストに追加しました</h2>
+            <div class="word-details" id="feedback-details"></div>
+            <div class="feedback-actions">
+                <button id="undo-check-btn" class="btn-secondary">やっぱり取り消す</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM要素の取得 ---
+    const jsonFilesInput = document.getElementById('json-files-input');
+    const loadBtn = document.getElementById('load-btn');
+    const exportBtn = document.getElementById('export-btn');
+    const startQuizBtn = document.getElementById('start-quiz-btn');
+    const wordListEl = document.getElementById('word-list');
+    const wordCountEl = document.getElementById('word-count');
+    const quizContainer = document.getElementById('quiz-container');
+    const listContainer = document.getElementById('list-container');
+    const quizProgressEl = document.getElementById('quiz-progress');
+    const quizWordEl = document.getElementById('quiz-word');
+    const quizOptionsEl = document.getElementById('quiz-options');
+    const feedbackContainer = document.getElementById('feedback-container');
+    const feedbackTitle = document.getElementById('feedback-title');
+    const feedbackDetailsEl = document.getElementById('feedback-details');
+    const undoCheckBtn = document.getElementById('undo-check-btn');
+
+    // --- アプリケーションの状態管理 ---
+    let allWords = [];
+    let quizWords = [];
+    let currentQuizIndex = 0;
+    let lastIncorrectWordId = null;
+
+    // --- イベントリスナー ---
+    loadBtn.addEventListener('click', loadWords);
+    exportBtn.addEventListener('click', exportCheckedWords);
+    startQuizBtn.addEventListener('click', startQuiz);
+    undoCheckBtn.addEventListener('click', undoLastCheck);
+
+    // 単語リスト内のチェックボックスイベント (イベント委任)
+    wordListEl.addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            const wordId = parseInt(e.target.dataset.id);
+            const word = allWords.find(w => w.id === wordId);
+            if (word) {
+                word.checked = e.target.checked;
+                e.target.closest('.word-item').classList.toggle('checked', word.checked);
+            }
+        }
+    });
+
+    // --- 関数定義 ---
+
+    // 複数のJSONファイルを読み込む関数
+    async function loadWords() {
+        const filenames = jsonFilesInput.value.split(',').map(f => f.trim()).filter(f => f);
+        if (filenames.length === 0) return alert('ファイル名を入力してください。');
+
+        try {
+            const responses = await Promise.all(filenames.map(f => fetch(f)));
+            for (const res of responses) {
+                if (!res.ok) throw new Error(`${res.url} の読み込みに失敗しました。`);
+            }
+            const dataArrays = await Promise.all(responses.map(res => res.json()));
+            
+            // 複数の単語リストを統合し、重複をIDで排除
+            const wordMap = new Map();
+            dataArrays.flat().forEach(word => wordMap.set(word.id, word));
+            allWords = Array.from(wordMap.values());
+            
+            renderWordList();
+            alert(`${allWords.length}語の単語を読み込みました。`);
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+            console.error(error);
+        }
+    }
+
+    // 単語リストをHTMLに描画する関数
+    function renderWordList() {
+        wordListEl.innerHTML = '';
+        allWords.sort((a, b) => a.word.localeCompare(b.word)); // アルファベット順にソート
+        allWords.forEach(word => {
+            const li = document.createElement('li');
+            li.className = 'word-item';
+            if(word.checked) li.classList.add('checked');
+            li.innerHTML = `
+                <input type="checkbox" data-id="${word.id}" ${word.checked ? 'checked' : ''}>
+                <div class="word-details">
+                    <div>
+                        <span class="word">${word.word}</span>
+                        <span class="pos">${word.pos}</span>
+                    </div>
+                    <div class="meaning">${word.meaning}</div>
+                    <div class="example">例: ${word.example}</div>
+                </div>
+            `;
+            wordListEl.appendChild(li);
+        });
+        wordCountEl.textContent = allWords.length;
+    }
+
+    // チェックされた単語をJSONファイルとしてエクスポートする関数
+    function exportCheckedWords() {
+        const checkedWords = allWords.filter(w => w.checked);
+        if (checkedWords.length === 0) return alert('エクスポートする単語がありません。');
+
+        const jsonString = JSON.stringify(checkedWords, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+
+        // ファイル名を動的に生成 (CheckWords_01.json, CheckWords_02.json...)
+        const date = new Date();
+        const timestamp = `${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
+        a.download = `CheckWords_${timestamp}.json`;
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    
+    // 4択テストを開始する関数
+    function startQuiz() {
+        quizWords = allWords.filter(w => !w.checked);
+        if (quizWords.length < 4) return alert('テストを行うには、未チェックの単語が4つ以上必要です。');
+        
+        // Fisher-Yatesシャッフルアルゴリズムで単語をランダムに並び替え
+        for (let i = quizWords.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [quizWords[i], quizWords[j]] = [quizWords[j], quizWords[i]];
+        }
+        
+        currentQuizIndex = 0;
+        listContainer.style.display = 'none';
+        feedbackContainer.style.display = 'none';
+        quizContainer.style.display = 'block';
+        displayQuizQuestion();
+    }
+    
+    // クイズの問題を表示する関数
+    function displayQuizQuestion() {
+        if (currentQuizIndex >= quizWords.length) {
+            alert('テスト終了です！お疲れ様でした。');
+            listContainer.style.display = 'block';
+            quizContainer.style.display = 'none';
+            renderWordList(); // テスト中にチェックされた単語を反映
+            return;
+        }
+
+        const currentWord = quizWords[currentQuizIndex];
+        quizProgressEl.textContent = `4択テスト (${currentQuizIndex + 1} / ${quizWords.length})`;
+        quizWordEl.textContent = currentWord.word;
+        
+        // 選択肢を作成
+        let options = [currentWord];
+        while (options.length < 4) {
+            const randomWord = allWords[Math.floor(Math.random() * allWords.length)];
+            // 重複しないように追加
+            if (!options.some(opt => opt.id === randomWord.id)) {
+                options.push(randomWord);
+            }
+        }
+        // 選択肢をシャッフル
+        options.sort(() => Math.random() - 0.5);
+        
+        quizOptionsEl.innerHTML = '';
+        options.forEach(opt => {
+            const button = document.createElement('button');
+            button.className = 'option-btn';
+            button.textContent = opt.meaning;
+            button.onclick = () => handleAnswer(opt.id === currentWord.id, currentWord);
+            quizOptionsEl.appendChild(button);
+        });
+    }
+
+    // 回答を処理する関数
+    function handleAnswer(isCorrect, word) {
+        if (isCorrect) {
+            feedbackContainer.style.display = 'none';
+            currentQuizIndex++;
+            displayQuizQuestion();
+        } else {
+            // 不正解の処理
+            word.checked = true;
+            lastIncorrectWordId = word.id;
+            feedbackTitle.textContent = '不正解... チェックリストに追加しました';
+            feedbackDetailsEl.innerHTML = `
+                <div><span class="word">${word.word}</span> <span class="pos">${word.pos}</span></div>
+                <div class="meaning">${word.meaning}</div>
+                <div class="example">例: ${word.example}</div>
+            `;
+            feedbackContainer.style.display = 'block';
+        }
+    }
+    
+    // 直前の不正解によるチェックを取り消す関数
+    function undoLastCheck() {
+        if (lastIncorrectWordId !== null) {
+            const word = allWords.find(w => w.id === lastIncorrectWordId);
+            if (word) {
+                word.checked = false;
+                lastIncorrectWordId = null;
+                feedbackContainer.style.display = 'none';
+                alert(`「${word.word}」のチェックを取り消しました。`);
+            }
+        }
+    }
+});
+</script>
+</body>
+</html>
