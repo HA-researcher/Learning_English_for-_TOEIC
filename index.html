@@ -43,6 +43,9 @@
         .meta { display:flex; gap:10px; align-items:center; }
         .hidden-note { color: var(--red); font-weight: 600; margin-left: 8px; font-size: 0.95em; }
         .unhide-btn { background: #ffb84d; color: #000; padding: 4px 8px; border-radius: 6px; border:none; cursor:pointer; }
+        .remove-btn { background: #dc3545; padding: 4px 8px; color: #fff; border-radius: 6px; border: none; cursor: pointer; }
+        .note { color: var(--gray); font-size: 0.9em; margin-left: 6px; }
+        #local-file-input { display:inline-block; }
     </style>
 </head>
 <body>
@@ -51,8 +54,13 @@
         
         <div class="controls">
             <input type="text" id="json-files-input" value="Words_01.json" placeholder="例: Words_01.json, SWEwords_1.json">
-            <button id="load-btn" class="btn-primary">🔄 読込（追加）</button>
-            <div class="file-list" id="loaded-files"></div>
+            <button id="load-btn" class="btn-primary">🔄 読込（追加 / URL）</button>
+
+            <label class="small note">またはローカルJSONを選択：</label>
+            <input type="file" id="local-file-input" accept=".json,application/json" multiple>
+            <button id="load-local-btn" class="btn-primary">📁 ローカル読み込み</button>
+
+            <div class="file-list" id="loaded-files" title="読み込まれたファイル一覧"></div>
 
             <button id="export-btn" class="btn-secondary">📄 チェックした単語を保存</button>
 
@@ -98,6 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // DOM
     const jsonFilesInput = document.getElementById('json-files-input');
     const loadBtn = document.getElementById('load-btn');
+    const loadLocalBtn = document.getElementById('load-local-btn');
+    const localFileInput = document.getElementById('local-file-input');
     const exportBtn = document.getElementById('export-btn');
     const startQuizBtn = document.getElementById('start-quiz-btn');
     const wordListEl = document.getElementById('word-list');
@@ -120,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // State
     let allWords = []; // {id (string), word, checked, definitions: [...], _files: [...]} merged across files
-    let filesState = []; // [{name, included:true}]
+    let filesState = []; // [{name, included:true, source: 'remote'|'local'}]
     let quizItems = []; // [{id, word, definition}]
     let currentQuizIndex = 0;
     let lastIncorrectWordId = null;
@@ -130,7 +140,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let wordStats = loadStats(); // { [id]: {consecutiveCorrect: number, hiddenUntil: timestamp|null} }
 
     // Events
-    loadBtn.addEventListener('click', () => loadWords({mode: 'append'}));
+    loadBtn.addEventListener('click', () => loadRemoteFiles());
+    loadLocalBtn.addEventListener('click', () => {
+        const files = Array.from(localFileInput.files || []);
+        if (files.length === 0) return alert('ローカルファイルを選択してください。');
+        loadLocalFiles(files);
+    });
     exportBtn.addEventListener('click', exportCheckedWords);
     startQuizBtn.addEventListener('click', startQuiz);
     undoCheckBtn.addEventListener('click', undoLastCheck);
@@ -213,11 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof d === 'string') {
                     pushDef('', d, '');
                 } else if (d && typeof d === 'object') {
-                    // Some JSON may use 'meaning' or 'meanings' or 'def' keys
-                    let meaning = d.meaning || d.meanings || d.def || d.text || '';
-                    // if d.meanings is array, join with '; '
+                    let meaning = d.meaning || d.meanings || d.def || d.text || d.gloss || '';
                     if (Array.isArray(d.meanings)) meaning = d.meanings.join('; ');
-                    pushDef(d.pos || d.partOfSpeech || '', meaning, d.example || d.examples || '');
+                    pushDef(d.pos || d.partOfSpeech || d.posTag || '', meaning, d.example || (Array.isArray(d.examples) ? d.examples.join(' / ') : d.examples) || '');
                 }
             });
         }
@@ -248,184 +261,291 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 4) fallback: if there are keys like gloss, shortdef
+        // 4) other known keys / fallback
         if (out.length === 0) {
             if (wordObj.gloss) pushDef('', wordObj.gloss, '');
             else if (wordObj.shortdef) {
                 if (Array.isArray(wordObj.shortdef)) wordObj.shortdef.forEach(s => pushDef('', s, ''));
                 else pushDef('', wordObj.shortdef, '');
+            } else if (wordObj.translation) {
+                if (Array.isArray(wordObj.translation)) wordObj.translation.forEach(t => pushDef('', t, ''));
+                else pushDef('', wordObj.translation, '');
             }
         }
 
         return out;
     }
 
-    // Load (append) multiple JSON files, merge words (by id), track file origin and allow exclude
-    async function loadWords({mode = 'append'} = {}) {
-        const filenames = jsonFilesInput.value.split(',').map(f => f.trim()).filter(f => f);
-        if (filenames.length === 0) return alert('ファイル名を入力してください。');
-
-        try {
-            // Determine which files are new (not yet known) and which are already in filesState
-            const existingNames = new Set(filesState.map(f => f.name));
-            const toFetch = filenames.filter(f => !existingNames.has(f));
-            const markIncluded = filenames; // filenames mentioned will be marked included
-
-            // Fetch new files (if any). Use Promise.allSettled so one bad file doesn't cancel others.
-            const fetchResults = await Promise.allSettled(toFetch.map(f => fetch(f)));
-
-            // Map for merging: start from existing allWords (preserve previously loaded words)
-            const map = new Map();
-            // seed map with existing words keyed by string id
-            allWords.forEach(w => {
-                map.set(String(w.id), {
-                    id: String(w.id),
-                    word: w.word || '',
-                    checked: !!w.checked,
-                    definitions: Array.isArray(w.definitions) ? w.definitions.slice() : [],
-                    _files: Array.isArray(w._files) ? w._files.slice() : []
-                });
+    // Merge helper: map existing allWords into a map keyed by string id
+    function seedMapFromAllWords(map) {
+        allWords.forEach(w => {
+            map.set(String(w.id), {
+                id: String(w.id),
+                word: w.word || '',
+                checked: !!w.checked,
+                definitions: Array.isArray(w.definitions) ? w.definitions.slice() : [],
+                _files: Array.isArray(w._files) ? w._files.slice() : []
             });
+        });
+    }
 
-            // Process fetched results
-            for (let i = 0; i < fetchResults.length; i++) {
-                const fname = toFetch[i];
-                const res = fetchResults[i];
-                if (res.status === 'fulfilled') {
-                    const response = res.value;
-                    if (!response.ok) {
-                        console.warn(`${fname} の読み込みに失敗しました。ステータス: ${response.status}`);
-                        continue;
-                    }
-                    let arr;
-                    try {
-                        arr = await response.json();
-                    } catch (e) {
-                        console.warn(`${fname} のJSON解析に失敗しました。`, e);
-                        continue;
-                    }
-                    if (!Array.isArray(arr)) {
-                        console.warn(`${fname} の内容が配列ではありません。スキップします。`);
-                        continue;
-                    }
+    // Load remote files (by URL or relative path). Adds new files; does not remove existing files unless user explicitly removes them.
+    async function loadRemoteFiles() {
+        const filenames = jsonFilesInput.value.split(',').map(f => f.trim()).filter(f => f);
+        if (filenames.length === 0) return alert('ファイル名/URLを入力してください。');
 
-                    arr.forEach(word => {
-                        if (!word || typeof word === 'undefined') return;
-                        // use string id (to support non-numeric ids). If id missing, try to use word text + file as key
-                        const idKey = (typeof word.id !== 'undefined' && word.id !== null) ? String(word.id) : (`__noid__${fname}__${String(word.word||'')}`);
-                        const existing = map.get(idKey);
-                        const defs = normalizeDefinitions(word);
+        // Determine toFetch (files not already known)
+        const existingNames = new Set(filesState.map(f => f.name));
+        const toFetch = filenames.filter(f => !existingNames.has(f));
+        // If a file name is already known but the user typed it, ensure it's marked included
+        filenames.forEach(name => {
+            const idx = filesState.findIndex(x => x.name === name);
+            if (idx >= 0) filesState[idx].included = true;
+        });
 
-                        if (existing) {
-                            // merge definitions (avoid duplicate meanings)
-                            defs.forEach(d => {
-                                if (!existing.definitions.some(ed => (ed.meaning||'').trim().toLowerCase() === (d.meaning||'').trim().toLowerCase())) {
-                                    existing.definitions.push(d);
-                                }
-                            });
-                            if (!existing._files.includes(fname)) existing._files.push(fname);
-                            // prefer existing checked:true if already set, otherwise take word.checked
-                            existing.checked = existing.checked || !!word.checked;
-                            // prefer non-empty word text
-                            if (!existing.word && word.word) existing.word = word.word;
-                        } else {
-                            map.set(idKey, {
-                                id: idKey,
-                                word: word.word || '',
-                                checked: !!word.checked,
-                                definitions: defs,
-                                _files: [fname]
-                            });
+        // Fetch new ones
+        const fetchResults = await Promise.allSettled(toFetch.map(f => fetch(f)));
+
+        // Build merge map
+        const map = new Map();
+        seedMapFromAllWords(map);
+
+        for (let i = 0; i < fetchResults.length; i++) {
+            const fname = toFetch[i];
+            const res = fetchResults[i];
+            if (res.status === 'fulfilled') {
+                const response = res.value;
+                if (!response.ok) {
+                    console.warn(`${fname} の読み込みに失敗しました。ステータス: ${response.status}`);
+                    continue;
+                }
+                let arr;
+                try {
+                    arr = await response.json();
+                } catch (e) {
+                    console.warn(`${fname} のJSON解析に失敗しました。`, e);
+                    continue;
+                }
+                if (!Array.isArray(arr)) {
+                    console.warn(`${fname} の内容が配列ではありません。スキップします。`);
+                    continue;
+                }
+
+                arr.forEach(word => {
+                    if (!word) return;
+                    const idKey = (typeof word.id !== 'undefined' && word.id !== null) ? String(word.id) : (`__noid__${fname}__${String(word.word||'')}`);
+                    const existing = map.get(idKey);
+                    const defs = normalizeDefinitions(word);
+
+                    if (existing) {
+                        defs.forEach(d => {
+                            if (!existing.definitions.some(ed => (ed.meaning||'').trim().toLowerCase() === (d.meaning||'').trim().toLowerCase())) {
+                                existing.definitions.push(d);
+                            }
+                        });
+                        if (!existing._files.includes(fname)) existing._files.push(fname);
+                        existing.checked = existing.checked || !!word.checked;
+                        if (!existing.word && word.word) existing.word = word.word;
+                    } else {
+                        map.set(idKey, {
+                            id: idKey,
+                            word: word.word || '',
+                            checked: !!word.checked,
+                            definitions: defs,
+                            _files: [fname]
+                        });
+                    }
+                });
+            } else {
+                console.warn(`ファイル ${toFetch[i]} のフェッチでエラー:`, res.reason);
+            }
+        }
+
+        // Update filesState: add fetched files (or files user typed) as included
+        const prevMap = new Map(filesState.map(f => [f.name, f.included]));
+        // ensure all filenames are known and included
+        filenames.forEach(name => prevMap.set(name, true));
+        // also add files discovered inside map (from _files)
+        map.forEach(w => (w._files || []).forEach(fn => prevMap.set(fn, prevMap.get(fn) === undefined ? true : prevMap.get(fn))));
+
+        // rebuild filesState preserving user-specified order first
+        const newFilesState = [];
+        const added = new Set();
+        filenames.forEach(name => {
+            newFilesState.push({name, included: !!prevMap.get(name), source: toFetch.includes(name) ? 'remote' : 'remote'});
+            added.add(name);
+        });
+        filesState.forEach(f => {
+            if (!added.has(f.name)) {
+                newFilesState.push({name: f.name, included: !!prevMap.get(f.name), source: f.source || 'remote'});
+                added.add(f.name);
+            }
+        });
+        // add any other discovered files
+        map.forEach(w => (w._files || []).forEach(fn => {
+            if (!added.has(fn)) {
+                newFilesState.push({name: fn, included: true, source: 'remote'});
+                added.add(fn);
+            }
+        }));
+
+        filesState = newFilesState;
+        allWords = Array.from(map.values());
+        loadPersistedWords();
+        renderFilesList();
+        renderWordList();
+        persistWordsToLocal();
+
+        alert(`${allWords.length}語を読み込みました（新規ファイル: ${toFetch.length} 件）。`);
+    }
+
+    // Load local File objects (from input). These are given a name and 'local' source.
+    async function loadLocalFiles(files) {
+        const map = new Map();
+        seedMapFromAllWords(map);
+
+        for (const file of files) {
+            let txt;
+            try {
+                txt = await file.text();
+            } catch (e) {
+                console.warn(`${file.name} の読み込みに失敗しました。`, e);
+                continue;
+            }
+            let arr;
+            try {
+                arr = JSON.parse(txt);
+            } catch (e) {
+                console.warn(`${file.name} のJSON解析に失敗しました。`, e);
+                continue;
+            }
+            if (!Array.isArray(arr)) {
+                console.warn(`${file.name} の内容が配列ではありません。スキップします。`);
+                continue;
+            }
+            arr.forEach(word => {
+                if (!word) return;
+                const fname = file.name;
+                const idKey = (typeof word.id !== 'undefined' && word.id !== null) ? String(word.id) : (`__noid__${fname}__${String(word.word||'')}`);
+                const existing = map.get(idKey);
+                const defs = normalizeDefinitions(word);
+
+                if (existing) {
+                    defs.forEach(d => {
+                        if (!existing.definitions.some(ed => (ed.meaning||'').trim().toLowerCase() === (d.meaning||'').trim().toLowerCase())) {
+                            existing.definitions.push(d);
                         }
                     });
+                    if (!existing._files.includes(fname)) existing._files.push(fname);
+                    existing.checked = existing.checked || !!word.checked;
+                    if (!existing.word && word.word) existing.word = word.word;
                 } else {
-                    console.warn(`ファイル ${toFetch[i]} のフェッチでエラー:`, res.reason);
-                }
-            }
-
-            // Also, if user included some filenames that were already present, ensure they are marked included
-            // Update filesState: preserve existing entries, add new ones as included by default
-            const prevMap = new Map(filesState.map(f => [f.name, f.included]));
-            filenames.forEach(name => {
-                // if previously existed, set to true (since user requested it), otherwise add as true
-                prevMap.set(name, true);
-            });
-            // Add any previously-known files that user didn't mention (preserve their included flag)
-            filesState.forEach(f => {
-                if (!prevMap.has(f.name)) prevMap.set(f.name, f.included);
-            });
-            // rebuild filesState preserving order: first the filenames user supplied, then others
-            const newFilesState = [];
-            const added = new Set();
-            // add filenames user mentioned first
-            filenames.forEach(name => {
-                newFilesState.push({name, included: !!prevMap.get(name)});
-                added.add(name);
-            });
-            // then add remaining files from prev filesState
-            filesState.forEach(f => {
-                if (!added.has(f.name)) {
-                    newFilesState.push({name: f.name, included: !!prevMap.get(f.name)});
-                    added.add(f.name);
+                    map.set(idKey, {
+                        id: idKey,
+                        word: word.word || '',
+                        checked: !!word.checked,
+                        definitions: defs,
+                        _files: [fname]
+                    });
                 }
             });
-            // finally, add any other files that were fetched but not previously in filesState or mentioned
-            map.forEach(w => {
-                (w._files || []).forEach(fn => {
-                    if (!added.has(fn)) {
-                        newFilesState.push({name: fn, included: true});
-                        added.add(fn);
-                    }
-                });
-            });
-
-            filesState = newFilesState;
-
-            allWords = Array.from(map.values());
-            // restore persisted small bits (checked state) if present (matching by id string)
-            loadPersistedWords();
-
-            renderFilesList();
-            renderWordList();
-            persistWordsToLocal();
-
-            alert(`${allWords.length}語（定義単位ではなく単語数）を読み込みました。新規ファイル: ${toFetch.length} 件。`);
-        } catch (error) {
-            alert(`エラー: ${error.message}`);
-            console.error(error);
         }
+
+        // Update filesState: add local files (marked as included by default)
+        const prevMap = new Map(filesState.map(f => [f.name, f.included]));
+        Array.from(files).forEach(file => prevMap.set(file.name, true));
+        // rebuild filesState: keep previous order, then add new local files if needed
+        const newFilesState = [];
+        const added = new Set();
+        // First add previously-known files (preserve order)
+        filesState.forEach(f => {
+            newFilesState.push({name: f.name, included: !!prevMap.get(f.name), source: f.source || 'remote'});
+            added.add(f.name);
+        });
+        // Then add new local files
+        Array.from(files).forEach(file => {
+            if (!added.has(file.name)) {
+                newFilesState.push({name: file.name, included: true, source: 'local'});
+                added.add(file.name);
+            }
+        });
+        // Also add any discovered file names from data
+        map.forEach(w => (w._files || []).forEach(fn => {
+            if (!added.has(fn)) {
+                newFilesState.push({name: fn, included: true, source: 'local'});
+                added.add(fn);
+            }
+        }));
+
+        filesState = newFilesState;
+        allWords = Array.from(map.values());
+        loadPersistedWords();
+        renderFilesList();
+        renderWordList();
+        persistWordsToLocal();
+
+        alert(`ローカルファイル ${files.length} 件を読み込みました。`);
     }
 
     function renderFilesList() {
         loadedFilesEl.innerHTML = '';
-        filesState.forEach(f => {
+        filesState.forEach((f, idx) => {
             const div = document.createElement('div');
             div.className = 'file-item';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = !!f.included;
+            cb.title = 'このファイルを表示の対象に含める / 除外する';
             cb.addEventListener('change', () => {
-                f.included = cb.checked;
+                filesState[idx].included = cb.checked;
                 renderWordList();
                 persistWordsToLocal();
             });
             const label = document.createElement('span');
-            label.textContent = f.name;
+            label.textContent = `${f.name} ${f.source ? '(' + f.source + ')' : ''}`;
+            label.style.maxWidth = '260px';
+            label.style.overflow = 'hidden';
+            label.style.textOverflow = 'ellipsis';
+            label.style.whiteSpace = 'nowrap';
             const excludeBtn = document.createElement('button');
             excludeBtn.className = 'unhide-btn';
-            excludeBtn.textContent = f.included ? '除外する' : '含める';
+            excludeBtn.textContent = f.included ? '除外' : '含める';
             excludeBtn.onclick = () => {
-                f.included = !f.included;
-                cb.checked = f.included;
-                excludeBtn.textContent = f.included ? '除外する' : '含める';
+                filesState[idx].included = !filesState[idx].included;
+                cb.checked = filesState[idx].included;
+                excludeBtn.textContent = filesState[idx].included ? '除外' : '含める';
                 renderWordList();
                 persistWordsToLocal();
             };
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-btn';
+            removeBtn.textContent = '削除';
+            removeBtn.title = '読み込んだファイルを完全に取り除きます（そのファイルのみが持つ単語は消えます）';
+            removeBtn.onclick = () => {
+                if (!confirm(`${f.name} を完全に削除しますか？ このファイル由来の単語で他に参照がないものはリストから削除されます。`)) return;
+                removeFileAndItsWords(f.name);
+            };
+
             div.appendChild(cb);
             div.appendChild(label);
             div.appendChild(excludeBtn);
+            div.appendChild(removeBtn);
             loadedFilesEl.appendChild(div);
         });
+    }
+
+    function removeFileAndItsWords(fname) {
+        // Remove file from filesState
+        filesState = filesState.filter(f => f.name !== fname);
+        // Remove file from _files arrays and remove words that have no files left
+        allWords = allWords.filter(w => {
+            w._files = (w._files || []).filter(fn => fn !== fname);
+            return (w._files && w._files.length > 0) || (w._files && w._files.length === 0 && w._manual); // keep manual words if any
+        });
+        // Persist and rerender
+        persistWordsToLocal();
+        renderFilesList();
+        renderWordList();
     }
 
     function isFileIncluded(fname) {
@@ -442,7 +562,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = Date.now();
 
         const visibleWords = allWords.filter(w => {
-            // if word has no file info, include it
             const files = w._files || [];
             const included = files.length === 0 ? true : files.some(isFileIncluded);
             if (!included) return false;
@@ -529,14 +648,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start quiz
     function startQuiz() {
-        // Build pool according to scope and file inclusion and hidden state
         const scope = quizScopeSelect.value; // 'unchecked' | 'checked' | 'all'
         const nQuestions = Math.max(1, parseInt(quizCountInput.value) || 1);
         const N = Math.max(1, parseInt(consecutiveNInput.value) || 1);
         const M = Math.max(0, parseInt(hideDaysMInput.value) || 0);
         const now = Date.now();
 
-        // Filter words by files included and hiddenUntil
         const poolWords = allWords.filter(w => {
             const files = w._files || [];
             const included = files.length === 0 ? true : files.some(isFileIncluded);
@@ -552,7 +669,6 @@ document.addEventListener('DOMContentLoaded', () => {
         quizItems = [];
         poolWords.forEach(word => {
             (word.definitions || []).forEach(def => {
-                // only include meaningful definitions
                 if (def && (def.meaning || '').trim() !== '') {
                     quizItems.push({ id: word.id, word: word.word, definition: def });
                 }
@@ -563,11 +679,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return alert('テストを行うには、対象となる単語（意味ペア）が4つ以上必要です。フィルターや非表示設定を確認してください。');
         }
 
-        // Shuffle quizItems and select first nQuestions (or as many as available)
         shuffleArray(quizItems);
         if (quizItems.length > nQuestions) quizItems = quizItems.slice(0, nQuestions);
-
-        // Save settings for use during quiz
         quizMeta = { N, M };
 
         currentQuizIndex = 0;
@@ -577,7 +690,6 @@ document.addEventListener('DOMContentLoaded', () => {
         displayQuizQuestion();
     }
 
-    // Show a quiz question
     function displayQuizQuestion() {
         if (currentQuizIndex >= quizItems.length) {
             alert('テスト終了です！お疲れ様でした。');
@@ -609,7 +721,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 options.push(randomDef);
             }
         }
-        // If still not enough (rare), duplicate with placeholder to fill
         while (options.length < 4) options.push({pos:'', meaning: '(選択肢不足)', example:''});
 
         shuffleArray(options);
@@ -629,10 +740,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleAnswer(isCorrect, quizItem) {
         const wordId = String(quizItem.id);
         if (isCorrect) {
-            // update stats: increment consecutive correct for the word and possibly hide it
             if (!wordStats[wordId]) wordStats[wordId] = {consecutiveCorrect: 0, hiddenUntil: null};
             wordStats[wordId].consecutiveCorrect = (wordStats[wordId].consecutiveCorrect || 0) + 1;
-            // If reaches N, set hiddenUntil = now + M days, and reset counter
             if (wordStats[wordId].consecutiveCorrect >= (quizMeta.N || 1)) {
                 if (quizMeta.M && quizMeta.M > 0) {
                     const days = quizMeta.M;
@@ -642,11 +751,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 wordStats[wordId].consecutiveCorrect = 0;
             }
             saveStats();
-            // auto-advance
             currentQuizIndex++;
             displayQuizQuestion();
         } else {
-            // incorrect: mark original word checked, reset consecutive count
             const originalWord = allWords.find(w => String(w.id) === wordId);
             if (originalWord) {
                 originalWord.checked = true;
@@ -656,7 +763,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveStats();
 
                 feedbackTitle.textContent = '不正解... チェックリストに追加しました';
-                // show all definitions, highlight the incorrect one
                 let definitionsHtml = '';
                 originalWord.definitions.forEach(def => {
                     const isIncorrectDef = (def.meaning || '').trim() === (quizItem.definition.meaning || '').trim();
@@ -676,13 +782,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${definitionsHtml}
                 `;
                 feedbackContainer.style.display = 'block';
-                // note: do not auto-advance on incorrect; user can undo check then continue
             } else {
-                // fallback: just advance
                 currentQuizIndex++;
                 displayQuizQuestion();
             }
-            // reflect checked state in UI
             renderWordList();
         }
     }
@@ -711,7 +814,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load previously persisted stats and optionally persisted local word meta
     (function initialLoad() {
-        // Try to load local persisted config if any (but not auto-fetching files)
         const rawLocal = localStorage.getItem('englishWords_local_v1');
         if (rawLocal) {
             try {
@@ -719,11 +821,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (obj.filesState) filesState = obj.filesState;
             } catch (e) { /* ignore */ }
         }
-        // No automatic fetch here other than initial load below.
     })();
 
     // Start by auto-loading filenames in input (if possible)
-    loadWords({mode: 'append'});
+    // Note: This will attempt to fetch the filename(s) in the input. If your SWEwords_1.json is a local file on your PC,
+    // the browser cannot fetch it by name; instead use the ファイル選択 (ローカル読み込み) to load it.
+    loadRemoteFiles();
 });
 </script>
 </body>
