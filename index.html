@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>英単語学習アプリ (複数意味対応版) — 改良v1.1</title>
+    <title>英単語学習アプリ</title>
     <style>
         :root { --main-color: #007bff; --light-gray: #f8f9fa; --gray: #6c757d; --red: #dc3545; --green: #28a745; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background-color: var(--light-gray); display: flex; justify-content: center; }
-        .container { width: 100%; max-width: 1000px; background-color: #fff; margin: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { width: 100%; max-width: 800px; background-color: #fff; margin: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1, h2 { color: #333; text-align: center; }
-        .controls, .quiz-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px; align-items: center; }
-        .controls input[type="text"], .controls input[type="number"], .controls select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; min-width: 120px; }
+        .controls, .quiz-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .controls input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 15px; border: none; border-radius: 4px; color: #fff; cursor: pointer; transition: background-color 0.2s; }
         .btn-primary { background-color: var(--main-color); }
         .btn-primary:hover { background-color: #0056b3; }
@@ -18,58 +18,33 @@
         .btn-secondary:hover { background-color: #5a6268; }
         .btn-success { background-color: var(--green); }
         .btn-success:hover { background-color: #218838; }
-        #word-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; border-top: 1px solid #eee; margin-top: 10px; }
+        #word-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
         .word-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid #eee; }
-        .word-item.hidden { opacity: 0.4; }
         .word-item.checked { background-color: #e9f5ff; }
-        .word-item input[type="checkbox"] { margin-top: 5px; width: 18px; height: 18px; flex-shrink: 0; }
+        .word-item input[type="checkbox"] { margin-top: 5px; width: 18px; height: 18px; }
         .word-details { flex-grow: 1; }
         .word-details .word { font-size: 1.2em; font-weight: bold; }
-        .definition-item { margin-top: 8px; margin-left: 10px; }
-        .definition-item .pos { font-style: italic; color: var(--gray); margin-right: 8px; }
-        .definition-item .meaning { font-weight: 500; }
-        .definition-item .example { color: #555; margin-top: 4px; font-size: 0.9em; }
+        .word-details .pos { font-style: italic; color: var(--gray); margin-left: 8px; }
+        .word-details .example { color: #555; margin-top: 4px; font-size: 0.9em; }
         #quiz-container, #feedback-container { display: none; padding: 20px; margin-top: 20px; border: 1px solid #ddd; border-radius: 8px; }
         #quiz-word { font-size: 2em; font-weight: bold; text-align: center; margin-bottom: 20px; }
         #quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .option-btn { width: 100%; padding: 15px; background-color: #f1f1f1; color: #333; text-align: left; font-size: 1em; border-radius: 6px; border: 1px solid transparent; cursor: pointer; }
+        .option-btn { width: 100%; padding: 15px; background-color: #f1f1f1; color: #333; text-align: left; font-size: 1em; }
         .option-btn:hover { background-color: #e0e0e0; }
         #feedback-container { background-color: #fffbe6; border-color: #ffe58f; }
         #feedback-container.correct { background-color: #e9f7ef; border-color: #a6d9b8; }
+        .feedback-word { font-size: 1.5em; }
         .feedback-actions { margin-top: 15px; }
-        .file-list { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-        .file-item { background:#f7f7f7; padding:6px 8px; border-radius:6px; border:1px solid #eee; display:flex; gap:6px; align-items:center; }
-        .small { font-size:0.85em; color:var(--gray); }
-        .meta { display:flex; gap:10px; align-items:center; }
-        .hidden-note { color: var(--red); font-weight: 600; margin-left: 8px; font-size: 0.95em; }
-        .unhide-btn { background: #ffb84d; color: #000; padding: 4px 8px; border-radius: 6px; border:none; cursor:pointer; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>英単語学習アプリ (複数意味対応版) — 改良版</h1>
+        <h1>英単語学習アプリ</h1>
         
         <div class="controls">
-            <input type="text" id="json-files-input" value="Words_01.json" placeholder="例: Words_01.json, Words_02.json">
+            <input type="text" id="json-files-input" value="Words_01.json" placeholder="Words_01.json, Words_02.json ...">
             <button id="load-btn" class="btn-primary">🔄 読込</button>
-            <div class="file-list" id="loaded-files"></div>
-
             <button id="export-btn" class="btn-secondary">📄 チェックした単語を保存</button>
-
-            <div class="meta">
-                <label class="small">出題数: <input type="number" id="quiz-count" min="1" value="20" style="width:80px"></label>
-                <label class="small">出題対象:
-                    <select id="quiz-scope">
-                        <option value="unchecked">チェックリスト外 (未チェック)</option>
-                        <option value="checked">チェックリスト内</option>
-                        <option value="all">全て</option>
-                    </select>
-                </label>
-                <label class="small">N(連続正解): <input type="number" id="consecutive-n" min="1" value="3" style="width:70px"></label>
-                <label class="small">M(日間非表示): <input type="number" id="hide-days-m" min="0" value="7" style="width:70px"></label>
-                <label class="small"><input type="checkbox" id="show-hidden"> 非表示中を表示</label>
-            </div>
-
             <button id="start-quiz-btn" class="btn-success">🧠 4択テスト開始</button>
         </div>
 
@@ -95,7 +70,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // DOM
+    // --- DOM要素の取得 ---
     const jsonFilesInput = document.getElementById('json-files-input');
     const loadBtn = document.getElementById('load-btn');
     const exportBtn = document.getElementById('export-btn');
@@ -111,148 +86,51 @@ document.addEventListener('DOMContentLoaded', () => {
     const feedbackTitle = document.getElementById('feedback-title');
     const feedbackDetailsEl = document.getElementById('feedback-details');
     const undoCheckBtn = document.getElementById('undo-check-btn');
-    const loadedFilesEl = document.getElementById('loaded-files');
-    const quizCountInput = document.getElementById('quiz-count');
-    const quizScopeSelect = document.getElementById('quiz-scope');
-    const consecutiveNInput = document.getElementById('consecutive-n');
-    const hideDaysMInput = document.getElementById('hide-days-m');
-    const showHiddenCheckbox = document.getElementById('show-hidden');
 
-    // State
-    let allWords = []; // {id, word, checked, definitions: [...], _files: [...]} merged across files
-    let filesState = []; // [{name, included:true}]
-    let quizItems = []; // [{id, word, definition}]
+    // --- アプリケーションの状態管理 ---
+    let allWords = [];
+    let quizWords = [];
     let currentQuizIndex = 0;
     let lastIncorrectWordId = null;
 
-    // Persisted stats per word
-    const STATS_KEY = 'englishWords_stats_v1';
-    let wordStats = loadStats(); // { [id]: {consecutiveCorrect: number, hiddenUntil: timestamp|null} }
-
-    // Events
+    // --- イベントリスナー ---
     loadBtn.addEventListener('click', loadWords);
     exportBtn.addEventListener('click', exportCheckedWords);
     startQuizBtn.addEventListener('click', startQuiz);
     undoCheckBtn.addEventListener('click', undoLastCheck);
-    showHiddenCheckbox.addEventListener('change', renderWordList);
 
+    // 単語リスト内のチェックボックスイベント (イベント委任)
     wordListEl.addEventListener('change', (e) => {
-        if (e.target.type === 'checkbox' && e.target.dataset.id) {
+        if (e.target.type === 'checkbox') {
             const wordId = parseInt(e.target.dataset.id);
             const word = allWords.find(w => w.id === wordId);
             if (word) {
                 word.checked = e.target.checked;
                 e.target.closest('.word-item').classList.toggle('checked', word.checked);
-                persistWordsToLocal(); // optional persist of current checked state
             }
         }
     });
 
-    // --- Functions ---
+    // --- 関数定義 ---
 
-    function loadStats() {
-        try {
-            const raw = localStorage.getItem(STATS_KEY);
-            return raw ? JSON.parse(raw) : {};
-        } catch (e) {
-            console.error('loadStats error', e);
-            return {};
-        }
-    }
-    function saveStats() {
-        try {
-            localStorage.setItem(STATS_KEY, JSON.stringify(wordStats));
-        } catch (e) {
-            console.error('saveStats error', e);
-        }
-    }
-    function persistWordsToLocal() {
-        // Keep checked state and basic meta in localStorage so UX is smoother across reloads
-        try {
-            const payload = {
-                filesState,
-                allWordsBasic: allWords.map(w => ({id:w.id, checked: !!w.checked, _files: w._files || []}))
-            };
-            localStorage.setItem('englishWords_local_v1', JSON.stringify(payload));
-        } catch (e) { console.warn(e); }
-    }
-    function loadPersistedWords() {
-        try {
-            const raw = localStorage.getItem('englishWords_local_v1');
-            if (!raw) return;
-            const obj = JSON.parse(raw);
-            if (obj.filesState) filesState = obj.filesState;
-            if (obj.allWordsBasic) {
-                obj.allWordsBasic.forEach(b => {
-                    const w = allWords.find(x => x.id === b.id);
-                    if (w) {
-                        w.checked = b.checked;
-                        w._files = b._files || w._files || [];
-                    }
-                });
-            }
-        } catch (e) { console.warn('loadPersistedWords', e); }
-    }
-
-    // Load multiple JSON files, merge words (by id), track file origin and allow exclude
+    // 複数のJSONファイルを読み込む関数
     async function loadWords() {
         const filenames = jsonFilesInput.value.split(',').map(f => f.trim()).filter(f => f);
         if (filenames.length === 0) return alert('ファイル名を入力してください。');
 
         try {
-            // Fetch all
             const responses = await Promise.all(filenames.map(f => fetch(f)));
             for (const res of responses) {
-                if (!res.ok) throw new Error(`${res.url} の読み込みに失敗しました。 (status ${res.status})`);
+                if (!res.ok) throw new Error(`${res.url} の読み込みに失敗しました。`);
             }
             const dataArrays = await Promise.all(responses.map(res => res.json()));
-
-            // Merge into map keyed by id
-            const map = new Map();
-            dataArrays.forEach((arr, index) => {
-                const fname = filenames[index];
-                if (!Array.isArray(arr)) return;
-                arr.forEach(word => {
-                    if (!word || typeof word.id === 'undefined') return;
-                    const id = parseInt(word.id);
-                    const existing = map.get(id);
-                    // normalize definitions: ensure array of {pos,meaning,example}
-                    const defs = Array.isArray(word.definitions) ? word.definitions.map(d => ({
-                        pos: d.pos || '',
-                        meaning: d.meaning || (d.meanings ? d.meanings : ''),
-                        example: d.example || ''
-                    })) : [];
-
-                    if (existing) {
-                        // merge definitions (avoid duplicate meanings)
-                        defs.forEach(d => {
-                            if (!existing.definitions.some(ed => ed.meaning === d.meaning)) existing.definitions.push(d);
-                        });
-                        if (!existing._files.includes(fname)) existing._files.push(fname);
-                    } else {
-                        map.set(id, {
-                            id,
-                            word: word.word || '',
-                            checked: !!word.checked,
-                            definitions: defs,
-                            _files: [fname]
-                        });
-                    }
-                });
-            });
-
-            allWords = Array.from(map.values());
-            // restore persisted stats into words where applicable (not strictly necessary)
-            loadPersistedWords();
-
-            // Initialize filesState: each file included by default; preserve previous include/exclude if present
-            const prevFiles = new Map(filesState.map(f => [f.name, f.included]));
-            filesState = filenames.map(f => ({name: f, included: prevFiles.has(f) ? prevFiles.get(f) : true}));
-
-            renderFilesList();
+            
+            // 複数の単語リストを統合し、重複をIDで排除
+            const wordMap = new Map();
+            dataArrays.flat().forEach(word => wordMap.set(word.id, word));
+            allWords = Array.from(wordMap.values());
+            
             renderWordList();
-            persistWordsToLocal();
-
             alert(`${allWords.length}語の単語を読み込みました。`);
         } catch (error) {
             alert(`エラー: ${error.message}`);
@@ -260,130 +138,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderFilesList() {
-        loadedFilesEl.innerHTML = '';
-        filesState.forEach(f => {
-            const div = document.createElement('div');
-            div.className = 'file-item';
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = !!f.included;
-            cb.addEventListener('change', () => {
-                f.included = cb.checked;
-                renderWordList();
-                persistWordsToLocal();
-            });
-            const label = document.createElement('span');
-            label.textContent = f.name;
-            const excludeBtn = document.createElement('button');
-            excludeBtn.className = 'unhide-btn';
-            excludeBtn.textContent = f.included ? '含める' : '除外';
-            // keep label simple; button toggles included
-            excludeBtn.onclick = () => {
-                f.included = !f.included;
-                cb.checked = f.included;
-                excludeBtn.textContent = f.included ? '含める' : '除外';
-                renderWordList();
-                persistWordsToLocal();
-            };
-            div.appendChild(cb);
-            div.appendChild(label);
-            div.appendChild(excludeBtn);
-            loadedFilesEl.appendChild(div);
-        });
-    }
-
-    function isFileIncluded(fname) {
-        const f = filesState.find(x => x.name === fname);
-        return f ? !!f.included : true;
-    }
-
-    // Render words: respects file include/exclude and per-word hiddenUntil, and showHidden checkbox
+    // 単語リストをHTMLに描画する関数
     function renderWordList() {
         wordListEl.innerHTML = '';
-        const showHidden = showHiddenCheckbox.checked;
-        // sort alphabetically
-        allWords.sort((a, b) => (a.word || '').localeCompare(b.word || ''));
-        const now = Date.now();
-
-        const visibleWords = allWords.filter(w => {
-            // if word has no file info, include it
-            const files = w._files || [];
-            const included = files.length === 0 ? true : files.some(isFileIncluded);
-            if (!included) return false;
-            const stats = wordStats[w.id];
-            const hiddenUntil = stats && stats.hiddenUntil ? stats.hiddenUntil : null;
-            if (hiddenUntil && hiddenUntil > now) {
-                return showHidden; // show only if showHidden true
-            }
-            return true;
-        });
-
-        visibleWords.forEach(word => {
-            const stats = wordStats[word.id] || {consecutiveCorrect: 0, hiddenUntil: null};
-            const isHidden = stats.hiddenUntil && stats.hiddenUntil > Date.now();
+        allWords.sort((a, b) => a.word.localeCompare(b.word)); // アルファベット順にソート
+        allWords.forEach(word => {
             const li = document.createElement('li');
-            li.className = 'word-item' + (word.checked ? ' checked' : '') + (isHidden ? ' hidden' : '');
-            let definitionsHtml = '';
-            (word.definitions || []).forEach(def => {
-                definitionsHtml += `
-                    <div class="definition-item">
-                        <div>
-                            <span class="pos">${escapeHtml(def.pos)}</span>
-                            <span class="meaning">${escapeHtml(def.meaning)}</span>
-                        </div>
-                        <div class="example">例: ${escapeHtml(def.example)}</div>
-                    </div>
-                `;
-            });
-
-            // Unhide button (visible only when hidden)
-            const unhideButtonHtml = isHidden ? `<button class="unhide-btn" data-id="${word.id}">非表示解除</button>` : '';
-
+            li.className = 'word-item';
+            if(word.checked) li.classList.add('checked');
             li.innerHTML = `
                 <input type="checkbox" data-id="${word.id}" ${word.checked ? 'checked' : ''}>
                 <div class="word-details">
-                    <div><span class="word">${escapeHtml(word.word)}</span> ${isHidden ? '<span class="hidden-note">（非表示中）</span>' : ''}</div>
-                    <div class="small">ファイル: ${escapeHtml((word._files||[]).join(', '))} / 連続正解: ${stats.consecutiveCorrect || 0}</div>
-                    ${definitionsHtml}
-                </div>
-                <div>
-                    ${unhideButtonHtml}
+                    <div>
+                        <span class="word">${word.word}</span>
+                        <span class="pos">${word.pos}</span>
+                    </div>
+                    <div class="meaning">${word.meaning}</div>
+                    <div class="example">例: ${word.example}</div>
                 </div>
             `;
             wordListEl.appendChild(li);
-
-            if (isHidden) {
-                const btn = li.querySelector('button.unhide-btn');
-                if (btn) {
-                    btn.addEventListener('click', () => {
-                        if (!wordStats[word.id]) wordStats[word.id] = {consecutiveCorrect: 0, hiddenUntil: null};
-                        wordStats[word.id].hiddenUntil = null;
-                        wordStats[word.id].consecutiveCorrect = 0;
-                        saveStats();
-                        renderWordList();
-                    });
-                }
-            }
         });
-
-        wordCountEl.textContent = visibleWords.length;
+        wordCountEl.textContent = allWords.length;
     }
 
-    function escapeHtml(str) {
-        if (str === undefined || str === null) return '';
-        return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[s]);
-    }
-
-    // Export checked words (only those from included files)
+    // チェックされた単語をJSONファイルとしてエクスポートする関数
     function exportCheckedWords() {
-        const checkedWords = allWords.filter(w => w.checked && (w._files || []).some(isFileIncluded));
+        const checkedWords = allWords.filter(w => w.checked);
         if (checkedWords.length === 0) return alert('エクスポートする単語がありません。');
+
         const jsonString = JSON.stringify(checkedWords, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+        // ファイル名を動的に生成 (CheckWords_01.json, CheckWords_02.json...)
+        const date = new Date();
+        const timestamp = `${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
         a.download = `CheckWords_${timestamp}.json`;
         a.href = url;
         document.body.appendChild(a);
@@ -391,163 +182,82 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
-
-    // Start quiz
+    
+    // 4択テストを開始する関数
     function startQuiz() {
-        // Build pool according to scope and file inclusion and hidden state
-        const scope = quizScopeSelect.value; // 'unchecked' | 'checked' | 'all'
-        const nQuestions = Math.max(1, parseInt(quizCountInput.value) || 1);
-        const N = Math.max(1, parseInt(consecutiveNInput.value) || 1);
-        const M = Math.max(0, parseInt(hideDaysMInput.value) || 0);
-        const now = Date.now();
-
-        // Filter words by files included and hiddenUntil
-        const poolWords = allWords.filter(w => {
-            const files = w._files || [];
-            const included = files.length === 0 ? true : files.some(isFileIncluded);
-            if (!included) return false;
-            const stats = wordStats[w.id] || {};
-            if (stats.hiddenUntil && stats.hiddenUntil > now) return false; // skip hidden
-            if (scope === 'checked') return !!w.checked;
-            if (scope === 'unchecked') return !w.checked;
-            return true;
-        });
-
-        // Build quiz items as definition-level items
-        quizItems = [];
-        poolWords.forEach(word => {
-            (word.definitions || []).forEach(def => {
-                quizItems.push({ id: word.id, word: word.word, definition: def });
-            });
-        });
-
-        if (quizItems.length < 4) {
-            return alert('テストを行うには、対象となる単語（意味ペア）が4つ以上必要です。フィルターや非表示設定を確認してください。');
+        quizWords = allWords.filter(w => !w.checked);
+        if (quizWords.length < 4) return alert('テストを行うには、未チェックの単語が4つ以上必要です。');
+        
+        // Fisher-Yatesシャッフルアルゴリズムで単語をランダムに並び替え
+        for (let i = quizWords.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [quizWords[i], quizWords[j]] = [quizWords[j], quizWords[i]];
         }
-
-        // Shuffle quizItems and select first nQuestions (or as many as available)
-        shuffleArray(quizItems);
-        if (quizItems.length > nQuestions) quizItems = quizItems.slice(0, nQuestions);
-
-        // Save settings for use during quiz
-        quizMeta = { N, M };
-
+        
         currentQuizIndex = 0;
         listContainer.style.display = 'none';
         feedbackContainer.style.display = 'none';
         quizContainer.style.display = 'block';
         displayQuizQuestion();
     }
-
-    // Show a quiz question
+    
+    // クイズの問題を表示する関数
     function displayQuizQuestion() {
-        if (currentQuizIndex >= quizItems.length) {
+        if (currentQuizIndex >= quizWords.length) {
             alert('テスト終了です！お疲れ様でした。');
             listContainer.style.display = 'block';
             quizContainer.style.display = 'none';
-            renderWordList();
-            saveStats();
+            renderWordList(); // テスト中にチェックされた単語を反映
             return;
         }
 
-        const currentQuizItem = quizItems[currentQuizIndex];
-        const correctAnswerDef = currentQuizItem.definition;
-
-        quizProgressEl.textContent = `4択テスト (${currentQuizIndex + 1} / ${quizItems.length})`;
-        quizWordEl.textContent = currentQuizItem.word;
-
-        // Build options: correct + 3 distractors (different meanings)
-        let options = [correctAnswerDef];
-        const triesMax = 1000;
-        let tries = 0;
-        while (options.length < 4 && tries < triesMax) {
-            tries++;
+        const currentWord = quizWords[currentQuizIndex];
+        quizProgressEl.textContent = `4択テスト (${currentQuizIndex + 1} / ${quizWords.length})`;
+        quizWordEl.textContent = currentWord.word;
+        
+        // 選択肢を作成
+        let options = [currentWord];
+        while (options.length < 4) {
             const randomWord = allWords[Math.floor(Math.random() * allWords.length)];
-            const defs = randomWord.definitions || [];
-            if (defs.length === 0) continue;
-            const randomDef = defs[Math.floor(Math.random() * defs.length)];
-            if (!options.some(opt => opt.meaning === randomDef.meaning)) {
-                options.push(randomDef);
+            // 重複しないように追加
+            if (!options.some(opt => opt.id === randomWord.id)) {
+                options.push(randomWord);
             }
         }
-        // If still not enough (rare), duplicate with different pos or example to fill
-        while (options.length < 4) options.push({pos:'', meaning: '(選択肢不足)', example:''});
-
-        shuffleArray(options);
-
+        // 選択肢をシャッフル
+        options.sort(() => Math.random() - 0.5);
+        
         quizOptionsEl.innerHTML = '';
         options.forEach(opt => {
             const button = document.createElement('button');
             button.className = 'option-btn';
-            button.innerHTML = `<div class="meaning">${escapeHtml(opt.meaning)}</div><div class="small">${escapeHtml(opt.pos)}</div>`;
-            button.onclick = () => handleAnswer(opt.meaning === correctAnswerDef.meaning, currentQuizItem);
+            button.textContent = opt.meaning;
+            button.onclick = () => handleAnswer(opt.id === currentWord.id, currentWord);
             quizOptionsEl.appendChild(button);
         });
     }
 
-    // Handle answer (auto-advance on correct)
-    let quizMeta = { N: 3, M: 7 };
-    function handleAnswer(isCorrect, quizItem) {
-        const wordId = quizItem.id;
+    // 回答を処理する関数
+    function handleAnswer(isCorrect, word) {
         if (isCorrect) {
-            // update stats: increment consecutive correct for the word and possibly hide it
-            if (!wordStats[wordId]) wordStats[wordId] = {consecutiveCorrect: 0, hiddenUntil: null};
-            wordStats[wordId].consecutiveCorrect = (wordStats[wordId].consecutiveCorrect || 0) + 1;
-            // If reaches N, set hiddenUntil = now + M days, and reset counter
-            if (wordStats[wordId].consecutiveCorrect >= (quizMeta.N || 1)) {
-                if (quizMeta.M && quizMeta.M > 0) {
-                    const days = quizMeta.M;
-                    const until = Date.now() + days * 24 * 60 * 60 * 1000;
-                    wordStats[wordId].hiddenUntil = until;
-                }
-                wordStats[wordId].consecutiveCorrect = 0;
-            }
-            saveStats();
-            // auto-advance
+            feedbackContainer.style.display = 'none';
             currentQuizIndex++;
             displayQuizQuestion();
         } else {
-            // incorrect: mark original word checked, reset consecutive count
-            const originalWord = allWords.find(w => w.id === wordId);
-            if (originalWord) {
-                originalWord.checked = true;
-                lastIncorrectWordId = originalWord.id;
-                if (!wordStats[wordId]) wordStats[wordId] = {consecutiveCorrect: 0, hiddenUntil: null};
-                wordStats[wordId].consecutiveCorrect = 0;
-                saveStats();
-
-                feedbackTitle.textContent = '不正解... チェックリストに追加しました';
-                // show all definitions, highlight the incorrect one
-                let definitionsHtml = '';
-                originalWord.definitions.forEach(def => {
-                    const isIncorrectDef = def.meaning === quizItem.definition.meaning;
-                    definitionsHtml += `
-                        <div class="definition-item" style="${isIncorrectDef ? 'font-weight:bold; color:var(--red);' : ''}">
-                            <div>
-                                <span class="pos">${escapeHtml(def.pos)}</span>
-                                <span class="meaning">${escapeHtml(def.meaning)}</span>
-                            </div>
-                            <div class="example">例: ${escapeHtml(def.example)}</div>
-                        </div>
-                    `;
-                });
-
-                feedbackDetailsEl.innerHTML = `
-                    <div><span class="word">${escapeHtml(originalWord.word)}</span></div>
-                    ${definitionsHtml}
-                `;
-                feedbackContainer.style.display = 'block';
-                // note: do not auto-advance on incorrect; user can undo check then continue
-            } else {
-                // fallback: just advance
-                currentQuizIndex++;
-                displayQuizQuestion();
-            }
-            // reflect checked state in UI
-            renderWordList();
+            // 不正解の処理
+            word.checked = true;
+            lastIncorrectWordId = word.id;
+            feedbackTitle.textContent = '不正解... チェックリストに追加しました';
+            feedbackDetailsEl.innerHTML = `
+                <div><span class="word">${word.word}</span> <span class="pos">${word.pos}</span></div>
+                <div class="meaning">${word.meaning}</div>
+                <div class="example">例: ${word.example}</div>
+            `;
+            feedbackContainer.style.display = 'block';
         }
     }
-
+    
+    // 直前の不正解によるチェックを取り消す関数
     function undoLastCheck() {
         if (lastIncorrectWordId !== null) {
             const word = allWords.find(w => w.id === lastIncorrectWordId);
@@ -555,36 +265,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 word.checked = false;
                 lastIncorrectWordId = null;
                 feedbackContainer.style.display = 'none';
-                persistWordsToLocal();
-                renderWordList();
                 alert(`「${word.word}」のチェックを取り消しました。`);
             }
         }
     }
-
-    // Utility: Fisher-Yates shuffle
-    function shuffleArray(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-    }
-
-    // Load previously persisted stats and optionally persisted local word meta
-    (function initialLoad() {
-        // Try to load local persisted config if any (but not auto-fetching files)
-        const rawLocal = localStorage.getItem('englishWords_local_v1');
-        if (rawLocal) {
-            try {
-                const obj = JSON.parse(rawLocal);
-                if (obj.filesState) filesState = obj.filesState;
-            } catch (e) { /* ignore */ }
-        }
-        // no automatic fetch here, keep prior behavior: call loadWords() at end to auto-load default file
-    })();
-
-    // Start by auto-loading filenames in input (if possible)
-    loadWords();
 });
 </script>
 </body>
