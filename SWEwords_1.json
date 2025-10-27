@@ -1,22 +1,66 @@
 [
-  { "id": 51, "word": "algorithm", "pos": "名詞", "meaning": "アルゴリズム、算法", "example": "What is the time complexity of this sorting algorithm?", "checked": false },
-  { "id": 52, "word": "data structure", "pos": "名詞", "meaning": "データ構造", "example": "Choosing the right data structure is crucial for performance.", "checked": false },
-  { "id": 53, "word": "optimize", "pos": "動詞", "meaning": "最適化する", "example": "We need to optimize this query to reduce latency.", "checked": false },
-  { "id": 54, "word": "complexity", "pos": "名詞", "meaning": "計算量、複雑さ", "example": "Let's analyze the space and time complexity of this solution.", "checked": false },
-  { "id": 55, "word": "trade-off", "pos": "名詞", "meaning": "トレードオフ、妥協点", "example": "There is a trade-off between memory usage and processing speed.", "checked": false },
-  { "id": 56, "word": "refactor", "pos": "動詞", "meaning": "リファクタリングする", "example": "I'll refactor this function to make it more readable.", "checked": false },
-  { "id": 57, "word": "scalable", "pos": "形容詞", "meaning": "拡張性のある、スケーラブルな", "example": "We need to design a scalable system that can handle millions of users.", "checked": false },
-  { "id": 58, "word": "latency", "pos": "名詞", "meaning": "遅延（時間）", "example": "How can we minimize the network latency?", "checked": false },
-  { "id": 59, "word": "throughput", "pos": "名詞", "meaning": "スループット、処理能力", "example": "We measured the throughput of the API in requests per second.", "checked": false },
-  { "id": 60, "word": "cache", "pos": "名詞", "meaning": "キャッシュ", "example": "We can use a cache like Redis to store frequently accessed data.", "checked": false },
-  { "id": 61, "word": "query", "pos": "名詞", "meaning": "クエリ、問い合わせ", "example": "This database query is taking too long to execute.", "checked": false },
-  { "id": 62, "word": "load balancer", "pos": "名詞", "meaning": "ロードバランサー、負荷分散装置", "example": "The load balancer distributes traffic across multiple servers.", "checked": false },
-  { "id": 63, "word": "endpoint", "pos": "名詞", "meaning": "エンドポイント", "example": "This API endpoint is used to retrieve user data.", "checked": false },
-  { "id": 64, "word": "deploy", "pos": "動詞", "meaning": "デプロイする、配備する", "example": "We plan to deploy the new version to production next week.", "checked": false },
-  { "id": 65, "word": "debug", "pos": "動詞", "meaning": "デバッグする、問題を発見・修正する", "example": "I spent hours debugging a concurrency issue.", "checked": false },
-  { "id": 66, "word": "edge case", "pos": "名詞", "meaning": "エッジケース、境界例", "example": "Did you consider the edge case where the input array is empty?", "checked": false },
-  { "id": 67, "word": "recursive", "pos": "形容詞", "meaning": "再帰的な", "example": "A recursive function is one that calls itself.", "checked": false },
-  { "id": 68, "word": "iterate", "pos": "動詞", "meaning": "反復する、繰り返す", "example": "My approach is to iterate through the array and check each element.", "checked": false },
-  { "id": 69, "word": "bottleneck", "pos": "名詞", "meaning": "ボトルネック、障害", "example": "The database connection pool seems to be the bottleneck.", "checked": false },
-  { "id": 70, "word": "concurrency", "pos": "名詞", "meaning": "並行性、同時実行性", "example": "Handling concurrency is a common challenge in backend systems.", "checked": false }
+  { "id": 51, "word": "algorithm", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "アルゴリズム、算法", "example": "What is the time complexity of this sorting algorithm?" }
+  ]},
+  { "id": 52, "word": "data structure", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "データ構造", "example": "Choosing the right data structure is crucial for performance." }
+  ]},
+  { "id": 53, "word": "optimize", "checked": false, "definitions": [
+    { "pos": "動詞", "meaning": "最適化する", "example": "We need to optimize this query to reduce latency." }
+  ]},
+  { "id": 54, "word": "complexity", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "計算量、複雑さ", "example": "Let's analyze the space and time complexity of this solution." }
+  ]},
+  { "id": 55, "word": "trade-off", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "トレードオフ、妥協点", "example": "There is a trade-off between memory usage and processing speed." }
+  ]},
+  { "id": 56, "word": "refactor", "checked": false, "definitions": [
+    { "pos": "動詞", "meaning": "リファクタリングする", "example": "I'll refactor this function to make it more readable." }
+  ]},
+  { "id": 57, "word": "scalable", "checked": false, "definitions": [
+    { "pos": "形容詞", "meaning": "拡張性のある、スケーラブルな", "example": "We need to design a scalable system that can handle millions of users." }
+  ]},
+  { "id": 58, "word": "latency", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "遅延（時間）", "example": "How can we minimize the network latency?" }
+  ]},
+  { "id": 59, "word": "throughput", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "スループット、処理能力", "example": "We measured the throughput of the API in requests per second." }
+  ]},
+  { "id": 60, "word": "cache", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "キャッシュ", "example": "We use Redis as a distributed cache." },
+    { "pos": "動詞", "meaning": "キャッシュする", "example": "The browser caches frequently accessed images." }
+  ]},
+  { "id": 61, "word": "query", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "クエリ、問い合わせ", "example": "This database query is taking too long to execute." },
+    { "pos": "動詞", "meaning": "問い合わせる", "example": "We need to query the user database for this information." }
+  ]},
+  { "id": 62, "word": "load balancer", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "ロードバランサー、負荷分散装置", "example": "The load balancer distributes traffic across multiple servers." }
+  ]},
+  { "id": 63, "word": "endpoint", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "エンドポイント", "example": "This API endpoint is used to retrieve user data." }
+  ]},
+  { "id": 64, "word": "deploy", "checked": false, "definitions": [
+    { "pos": "動詞", "meaning": "デプロイする、配備する", "example": "We plan to deploy the new version to production." },
+    { "pos": "名詞", "meaning": "デプロイ、配備", "example": "The deployment failed due to a configuration error." }
+  ]},
+  { "id": 65, "word": "debug", "checked": false, "definitions": [
+    { "pos": "動詞", "meaning": "デバッグする", "example": "I spent hours debugging a concurrency issue." },
+    { "pos": "名詞", "meaning": "デバッグ、問題修正", "example": "The debug process took longer than expected." }
+  ]},
+  { "id": 66, "word": "edge case", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "エッジケース、境界例", "example": "Did you consider the edge case where the input array is empty?" }
+  ]},
+  { "id": 67, "word": "recursive", "checked": false, "definitions": [
+    { "pos": "形容詞", "meaning": "再帰的な", "example": "A recursive function is one that calls itself." }
+  ]},
+  { "id": 68, "word": "iterate", "checked": false, "definitions": [
+    { "pos": "動詞", "meaning": "反復する、繰り返す", "example": "My approach is to iterate through the array and check each element." }
+  ]},
+  { "id": 69, "word": "bottleneck", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "ボトルネック、障害", "example": "The database connection pool seems to be the bottleneck." }
+  ]},
+  { "id": 70, "word": "concurrency", "checked": false, "definitions": [
+    { "pos": "名詞", "meaning": "並行性、同時実行性", "example": "Handling concurrency is a common challenge in backend systems." }
+  ]}
 ]
