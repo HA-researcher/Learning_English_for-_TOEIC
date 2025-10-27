@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>英単語学習アプリ (複数意味対応版) — 改良v1.1</title>
+    <title>英単語学習アプリ (複数意味対応版) — 改良v1.2</title>
     <style>
         :root { --main-color: #007bff; --light-gray: #f8f9fa; --gray: #6c757d; --red: #dc3545; --green: #28a745; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background-color: var(--light-gray); display: flex; justify-content: center; }
@@ -50,8 +50,8 @@
         <h1>英単語学習アプリ (複数意味対応版) — 改良版</h1>
         
         <div class="controls">
-            <input type="text" id="json-files-input" value="Words_01.json" placeholder="例: Words_01.json, Words_02.json">
-            <button id="load-btn" class="btn-primary">🔄 読込</button>
+            <input type="text" id="json-files-input" value="Words_01.json" placeholder="例: Words_01.json, SWEwords_1.json">
+            <button id="load-btn" class="btn-primary">🔄 読込（追加）</button>
             <div class="file-list" id="loaded-files"></div>
 
             <button id="export-btn" class="btn-secondary">📄 チェックした単語を保存</button>
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showHiddenCheckbox = document.getElementById('show-hidden');
 
     // State
-    let allWords = []; // {id, word, checked, definitions: [...], _files: [...]} merged across files
+    let allWords = []; // {id (string), word, checked, definitions: [...], _files: [...]} merged across files
     let filesState = []; // [{name, included:true}]
     let quizItems = []; // [{id, word, definition}]
     let currentQuizIndex = 0;
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let wordStats = loadStats(); // { [id]: {consecutiveCorrect: number, hiddenUntil: timestamp|null} }
 
     // Events
-    loadBtn.addEventListener('click', loadWords);
+    loadBtn.addEventListener('click', () => loadWords({mode: 'append'}));
     exportBtn.addEventListener('click', exportCheckedWords);
     startQuizBtn.addEventListener('click', startQuiz);
     undoCheckBtn.addEventListener('click', undoLastCheck);
@@ -138,8 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     wordListEl.addEventListener('change', (e) => {
         if (e.target.type === 'checkbox' && e.target.dataset.id) {
-            const wordId = parseInt(e.target.dataset.id);
-            const word = allWords.find(w => w.id === wordId);
+            const wordId = String(e.target.dataset.id);
+            const word = allWords.find(w => String(w.id) === wordId);
             if (word) {
                 word.checked = e.target.checked;
                 e.target.closest('.word-item').classList.toggle('checked', word.checked);
@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const payload = {
                 filesState,
-                allWordsBasic: allWords.map(w => ({id:w.id, checked: !!w.checked, _files: w._files || []}))
+                allWordsBasic: allWords.map(w => ({id: String(w.id), checked: !!w.checked, _files: w._files || []}))
             };
             localStorage.setItem('englishWords_local_v1', JSON.stringify(payload));
         } catch (e) { console.warn(e); }
@@ -184,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (obj.filesState) filesState = obj.filesState;
             if (obj.allWordsBasic) {
                 obj.allWordsBasic.forEach(b => {
-                    const w = allWords.find(x => x.id === b.id);
+                    const w = allWords.find(x => String(x.id) === String(b.id));
                     if (w) {
                         w.checked = b.checked;
                         w._files = b._files || w._files || [];
@@ -194,66 +194,202 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.warn('loadPersistedWords', e); }
     }
 
-    // Load multiple JSON files, merge words (by id), track file origin and allow exclude
-    async function loadWords() {
+    // Normalize various json formats into definitions array of {pos, meaning, example}
+    function normalizeDefinitions(wordObj) {
+        const out = [];
+        // Helper to push unique meaning
+        function pushDef(pos, meaning, example) {
+            meaning = (meaning === undefined || meaning === null) ? '' : String(meaning).trim();
+            pos = pos || '';
+            example = example || '';
+            if (!out.some(d => (d.meaning || '').trim().toLowerCase() === meaning.toLowerCase())) {
+                out.push({pos, meaning, example});
+            }
+        }
+
+        // 1) word.definitions as array
+        if (Array.isArray(wordObj.definitions)) {
+            wordObj.definitions.forEach(d => {
+                if (typeof d === 'string') {
+                    pushDef('', d, '');
+                } else if (d && typeof d === 'object') {
+                    // Some JSON may use 'meaning' or 'meanings' or 'def' keys
+                    let meaning = d.meaning || d.meanings || d.def || d.text || '';
+                    // if d.meanings is array, join with '; '
+                    if (Array.isArray(d.meanings)) meaning = d.meanings.join('; ');
+                    pushDef(d.pos || d.partOfSpeech || '', meaning, d.example || d.examples || '');
+                }
+            });
+        }
+
+        // 2) word.meanings or word.meaning (string or array)
+        if (out.length === 0) {
+            if (wordObj.meanings) {
+                if (Array.isArray(wordObj.meanings)) {
+                    wordObj.meanings.forEach(m => {
+                        if (typeof m === 'string') pushDef('', m, '');
+                        else if (m && typeof m === 'object') pushDef(m.pos || '', m.meaning || m.text || '', m.example || '');
+                    });
+                } else {
+                    pushDef('', wordObj.meanings, '');
+                }
+            } else if (wordObj.meaning) {
+                if (typeof wordObj.meaning === 'string') pushDef('', wordObj.meaning, '');
+                else if (Array.isArray(wordObj.meaning)) wordObj.meaning.forEach(m => pushDef('', m, ''));
+            }
+        }
+
+        // 3) word.definition (singular)
+        if (out.length === 0 && wordObj.definition) {
+            if (typeof wordObj.definition === 'string') pushDef('', wordObj.definition, '');
+            else if (Array.isArray(wordObj.definition)) wordObj.definition.forEach(d => pushDef('', d, ''));
+            else if (wordObj.definition && typeof wordObj.definition === 'object') {
+                pushDef(wordObj.definition.pos || '', wordObj.definition.meaning || wordObj.definition.text || '', wordObj.definition.example || '');
+            }
+        }
+
+        // 4) fallback: if there are keys like gloss, shortdef
+        if (out.length === 0) {
+            if (wordObj.gloss) pushDef('', wordObj.gloss, '');
+            else if (wordObj.shortdef) {
+                if (Array.isArray(wordObj.shortdef)) wordObj.shortdef.forEach(s => pushDef('', s, ''));
+                else pushDef('', wordObj.shortdef, '');
+            }
+        }
+
+        return out;
+    }
+
+    // Load (append) multiple JSON files, merge words (by id), track file origin and allow exclude
+    async function loadWords({mode = 'append'} = {}) {
         const filenames = jsonFilesInput.value.split(',').map(f => f.trim()).filter(f => f);
         if (filenames.length === 0) return alert('ファイル名を入力してください。');
 
         try {
-            // Fetch all
-            const responses = await Promise.all(filenames.map(f => fetch(f)));
-            for (const res of responses) {
-                if (!res.ok) throw new Error(`${res.url} の読み込みに失敗しました。 (status ${res.status})`);
-            }
-            const dataArrays = await Promise.all(responses.map(res => res.json()));
+            // Determine which files are new (not yet known) and which are already in filesState
+            const existingNames = new Set(filesState.map(f => f.name));
+            const toFetch = filenames.filter(f => !existingNames.has(f));
+            const markIncluded = filenames; // filenames mentioned will be marked included
 
-            // Merge into map keyed by id
+            // Fetch new files (if any). Use Promise.allSettled so one bad file doesn't cancel others.
+            const fetchResults = await Promise.allSettled(toFetch.map(f => fetch(f)));
+
+            // Map for merging: start from existing allWords (preserve previously loaded words)
             const map = new Map();
-            dataArrays.forEach((arr, index) => {
-                const fname = filenames[index];
-                if (!Array.isArray(arr)) return;
-                arr.forEach(word => {
-                    if (!word || typeof word.id === 'undefined') return;
-                    const id = parseInt(word.id);
-                    const existing = map.get(id);
-                    // normalize definitions: ensure array of {pos,meaning,example}
-                    const defs = Array.isArray(word.definitions) ? word.definitions.map(d => ({
-                        pos: d.pos || '',
-                        meaning: d.meaning || (d.meanings ? d.meanings : ''),
-                        example: d.example || ''
-                    })) : [];
+            // seed map with existing words keyed by string id
+            allWords.forEach(w => {
+                map.set(String(w.id), {
+                    id: String(w.id),
+                    word: w.word || '',
+                    checked: !!w.checked,
+                    definitions: Array.isArray(w.definitions) ? w.definitions.slice() : [],
+                    _files: Array.isArray(w._files) ? w._files.slice() : []
+                });
+            });
 
-                    if (existing) {
-                        // merge definitions (avoid duplicate meanings)
-                        defs.forEach(d => {
-                            if (!existing.definitions.some(ed => ed.meaning === d.meaning)) existing.definitions.push(d);
-                        });
-                        if (!existing._files.includes(fname)) existing._files.push(fname);
-                    } else {
-                        map.set(id, {
-                            id,
-                            word: word.word || '',
-                            checked: !!word.checked,
-                            definitions: defs,
-                            _files: [fname]
-                        });
+            // Process fetched results
+            for (let i = 0; i < fetchResults.length; i++) {
+                const fname = toFetch[i];
+                const res = fetchResults[i];
+                if (res.status === 'fulfilled') {
+                    const response = res.value;
+                    if (!response.ok) {
+                        console.warn(`${fname} の読み込みに失敗しました。ステータス: ${response.status}`);
+                        continue;
+                    }
+                    let arr;
+                    try {
+                        arr = await response.json();
+                    } catch (e) {
+                        console.warn(`${fname} のJSON解析に失敗しました。`, e);
+                        continue;
+                    }
+                    if (!Array.isArray(arr)) {
+                        console.warn(`${fname} の内容が配列ではありません。スキップします。`);
+                        continue;
+                    }
+
+                    arr.forEach(word => {
+                        if (!word || typeof word === 'undefined') return;
+                        // use string id (to support non-numeric ids). If id missing, try to use word text + file as key
+                        const idKey = (typeof word.id !== 'undefined' && word.id !== null) ? String(word.id) : (`__noid__${fname}__${String(word.word||'')}`);
+                        const existing = map.get(idKey);
+                        const defs = normalizeDefinitions(word);
+
+                        if (existing) {
+                            // merge definitions (avoid duplicate meanings)
+                            defs.forEach(d => {
+                                if (!existing.definitions.some(ed => (ed.meaning||'').trim().toLowerCase() === (d.meaning||'').trim().toLowerCase())) {
+                                    existing.definitions.push(d);
+                                }
+                            });
+                            if (!existing._files.includes(fname)) existing._files.push(fname);
+                            // prefer existing checked:true if already set, otherwise take word.checked
+                            existing.checked = existing.checked || !!word.checked;
+                            // prefer non-empty word text
+                            if (!existing.word && word.word) existing.word = word.word;
+                        } else {
+                            map.set(idKey, {
+                                id: idKey,
+                                word: word.word || '',
+                                checked: !!word.checked,
+                                definitions: defs,
+                                _files: [fname]
+                            });
+                        }
+                    });
+                } else {
+                    console.warn(`ファイル ${toFetch[i]} のフェッチでエラー:`, res.reason);
+                }
+            }
+
+            // Also, if user included some filenames that were already present, ensure they are marked included
+            // Update filesState: preserve existing entries, add new ones as included by default
+            const prevMap = new Map(filesState.map(f => [f.name, f.included]));
+            filenames.forEach(name => {
+                // if previously existed, set to true (since user requested it), otherwise add as true
+                prevMap.set(name, true);
+            });
+            // Add any previously-known files that user didn't mention (preserve their included flag)
+            filesState.forEach(f => {
+                if (!prevMap.has(f.name)) prevMap.set(f.name, f.included);
+            });
+            // rebuild filesState preserving order: first the filenames user supplied, then others
+            const newFilesState = [];
+            const added = new Set();
+            // add filenames user mentioned first
+            filenames.forEach(name => {
+                newFilesState.push({name, included: !!prevMap.get(name)});
+                added.add(name);
+            });
+            // then add remaining files from prev filesState
+            filesState.forEach(f => {
+                if (!added.has(f.name)) {
+                    newFilesState.push({name: f.name, included: !!prevMap.get(f.name)});
+                    added.add(f.name);
+                }
+            });
+            // finally, add any other files that were fetched but not previously in filesState or mentioned
+            map.forEach(w => {
+                (w._files || []).forEach(fn => {
+                    if (!added.has(fn)) {
+                        newFilesState.push({name: fn, included: true});
+                        added.add(fn);
                     }
                 });
             });
 
-            allWords = Array.from(map.values());
-            // restore persisted stats into words where applicable (not strictly necessary)
-            loadPersistedWords();
+            filesState = newFilesState;
 
-            // Initialize filesState: each file included by default; preserve previous include/exclude if present
-            const prevFiles = new Map(filesState.map(f => [f.name, f.included]));
-            filesState = filenames.map(f => ({name: f, included: prevFiles.has(f) ? prevFiles.get(f) : true}));
+            allWords = Array.from(map.values());
+            // restore persisted small bits (checked state) if present (matching by id string)
+            loadPersistedWords();
 
             renderFilesList();
             renderWordList();
             persistWordsToLocal();
 
-            alert(`${allWords.length}語の単語を読み込みました。`);
+            alert(`${allWords.length}語（定義単位ではなく単語数）を読み込みました。新規ファイル: ${toFetch.length} 件。`);
         } catch (error) {
             alert(`エラー: ${error.message}`);
             console.error(error);
@@ -277,12 +413,11 @@ document.addEventListener('DOMContentLoaded', () => {
             label.textContent = f.name;
             const excludeBtn = document.createElement('button');
             excludeBtn.className = 'unhide-btn';
-            excludeBtn.textContent = f.included ? '含める' : '除外';
-            // keep label simple; button toggles included
+            excludeBtn.textContent = f.included ? '除外する' : '含める';
             excludeBtn.onclick = () => {
                 f.included = !f.included;
                 cb.checked = f.included;
-                excludeBtn.textContent = f.included ? '含める' : '除外';
+                excludeBtn.textContent = f.included ? '除外する' : '含める';
                 renderWordList();
                 persistWordsToLocal();
             };
@@ -311,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const files = w._files || [];
             const included = files.length === 0 ? true : files.some(isFileIncluded);
             if (!included) return false;
-            const stats = wordStats[w.id];
+            const stats = wordStats[String(w.id)];
             const hiddenUntil = stats && stats.hiddenUntil ? stats.hiddenUntil : null;
             if (hiddenUntil && hiddenUntil > now) {
                 return showHidden; // show only if showHidden true
@@ -320,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         visibleWords.forEach(word => {
-            const stats = wordStats[word.id] || {consecutiveCorrect: 0, hiddenUntil: null};
+            const stats = wordStats[String(word.id)] || {consecutiveCorrect: 0, hiddenUntil: null};
             const isHidden = stats.hiddenUntil && stats.hiddenUntil > Date.now();
             const li = document.createElement('li');
             li.className = 'word-item' + (word.checked ? ' checked' : '') + (isHidden ? ' hidden' : '');
@@ -338,10 +473,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Unhide button (visible only when hidden)
-            const unhideButtonHtml = isHidden ? `<button class="unhide-btn" data-id="${word.id}">非表示解除</button>` : '';
+            const unhideButtonHtml = isHidden ? `<button class="unhide-btn" data-id="${escapeHtml(String(word.id))}">非表示解除</button>` : '';
 
             li.innerHTML = `
-                <input type="checkbox" data-id="${word.id}" ${word.checked ? 'checked' : ''}>
+                <input type="checkbox" data-id="${escapeHtml(String(word.id))}" ${word.checked ? 'checked' : ''}>
                 <div class="word-details">
                     <div><span class="word">${escapeHtml(word.word)}</span> ${isHidden ? '<span class="hidden-note">（非表示中）</span>' : ''}</div>
                     <div class="small">ファイル: ${escapeHtml((word._files||[]).join(', '))} / 連続正解: ${stats.consecutiveCorrect || 0}</div>
@@ -357,9 +492,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const btn = li.querySelector('button.unhide-btn');
                 if (btn) {
                     btn.addEventListener('click', () => {
-                        if (!wordStats[word.id]) wordStats[word.id] = {consecutiveCorrect: 0, hiddenUntil: null};
-                        wordStats[word.id].hiddenUntil = null;
-                        wordStats[word.id].consecutiveCorrect = 0;
+                        if (!wordStats[String(word.id)]) wordStats[String(word.id)] = {consecutiveCorrect: 0, hiddenUntil: null};
+                        wordStats[String(word.id)].hiddenUntil = null;
+                        wordStats[String(word.id)].consecutiveCorrect = 0;
                         saveStats();
                         renderWordList();
                     });
@@ -406,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const files = w._files || [];
             const included = files.length === 0 ? true : files.some(isFileIncluded);
             if (!included) return false;
-            const stats = wordStats[w.id] || {};
+            const stats = wordStats[String(w.id)] || {};
             if (stats.hiddenUntil && stats.hiddenUntil > now) return false; // skip hidden
             if (scope === 'checked') return !!w.checked;
             if (scope === 'unchecked') return !w.checked;
@@ -417,7 +552,10 @@ document.addEventListener('DOMContentLoaded', () => {
         quizItems = [];
         poolWords.forEach(word => {
             (word.definitions || []).forEach(def => {
-                quizItems.push({ id: word.id, word: word.word, definition: def });
+                // only include meaningful definitions
+                if (def && (def.meaning || '').trim() !== '') {
+                    quizItems.push({ id: word.id, word: word.word, definition: def });
+                }
             });
         });
 
@@ -466,11 +604,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const defs = randomWord.definitions || [];
             if (defs.length === 0) continue;
             const randomDef = defs[Math.floor(Math.random() * defs.length)];
-            if (!options.some(opt => opt.meaning === randomDef.meaning)) {
+            if (!randomDef || !(randomDef.meaning||'').trim()) continue;
+            if (!options.some(opt => (opt.meaning||'').trim().toLowerCase() === (randomDef.meaning||'').trim().toLowerCase())) {
                 options.push(randomDef);
             }
         }
-        // If still not enough (rare), duplicate with different pos or example to fill
+        // If still not enough (rare), duplicate with placeholder to fill
         while (options.length < 4) options.push({pos:'', meaning: '(選択肢不足)', example:''});
 
         shuffleArray(options);
@@ -480,7 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const button = document.createElement('button');
             button.className = 'option-btn';
             button.innerHTML = `<div class="meaning">${escapeHtml(opt.meaning)}</div><div class="small">${escapeHtml(opt.pos)}</div>`;
-            button.onclick = () => handleAnswer(opt.meaning === correctAnswerDef.meaning, currentQuizItem);
+            button.onclick = () => handleAnswer((opt.meaning||'').trim() === (correctAnswerDef.meaning||'').trim(), currentQuizItem);
             quizOptionsEl.appendChild(button);
         });
     }
@@ -488,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle answer (auto-advance on correct)
     let quizMeta = { N: 3, M: 7 };
     function handleAnswer(isCorrect, quizItem) {
-        const wordId = quizItem.id;
+        const wordId = String(quizItem.id);
         if (isCorrect) {
             // update stats: increment consecutive correct for the word and possibly hide it
             if (!wordStats[wordId]) wordStats[wordId] = {consecutiveCorrect: 0, hiddenUntil: null};
@@ -508,10 +647,10 @@ document.addEventListener('DOMContentLoaded', () => {
             displayQuizQuestion();
         } else {
             // incorrect: mark original word checked, reset consecutive count
-            const originalWord = allWords.find(w => w.id === wordId);
+            const originalWord = allWords.find(w => String(w.id) === wordId);
             if (originalWord) {
                 originalWord.checked = true;
-                lastIncorrectWordId = originalWord.id;
+                lastIncorrectWordId = String(originalWord.id);
                 if (!wordStats[wordId]) wordStats[wordId] = {consecutiveCorrect: 0, hiddenUntil: null};
                 wordStats[wordId].consecutiveCorrect = 0;
                 saveStats();
@@ -520,7 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // show all definitions, highlight the incorrect one
                 let definitionsHtml = '';
                 originalWord.definitions.forEach(def => {
-                    const isIncorrectDef = def.meaning === quizItem.definition.meaning;
+                    const isIncorrectDef = (def.meaning || '').trim() === (quizItem.definition.meaning || '').trim();
                     definitionsHtml += `
                         <div class="definition-item" style="${isIncorrectDef ? 'font-weight:bold; color:var(--red);' : ''}">
                             <div>
@@ -550,7 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function undoLastCheck() {
         if (lastIncorrectWordId !== null) {
-            const word = allWords.find(w => w.id === lastIncorrectWordId);
+            const word = allWords.find(w => String(w.id) === String(lastIncorrectWordId));
             if (word) {
                 word.checked = false;
                 lastIncorrectWordId = null;
@@ -580,11 +719,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (obj.filesState) filesState = obj.filesState;
             } catch (e) { /* ignore */ }
         }
-        // no automatic fetch here, keep prior behavior: call loadWords() at end to auto-load default file
+        // No automatic fetch here other than initial load below.
     })();
 
     // Start by auto-loading filenames in input (if possible)
-    loadWords();
+    loadWords({mode: 'append'});
 });
 </script>
 </body>
