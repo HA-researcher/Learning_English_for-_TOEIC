@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>英単語学習アプリ</title>
+    <title>英単語学習アプリ (複数意味対応版)</title>
     <style>
         :root { --main-color: #007bff; --light-gray: #f8f9fa; --gray: #6c757d; --red: #dc3545; --green: #28a745; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; background-color: var(--light-gray); display: flex; justify-content: center; }
@@ -21,11 +21,13 @@
         #word-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
         .word-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid #eee; }
         .word-item.checked { background-color: #e9f5ff; }
-        .word-item input[type="checkbox"] { margin-top: 5px; width: 18px; height: 18px; }
+        .word-item input[type="checkbox"] { margin-top: 5px; width: 18px; height: 18px; flex-shrink: 0; }
         .word-details { flex-grow: 1; }
         .word-details .word { font-size: 1.2em; font-weight: bold; }
-        .word-details .pos { font-style: italic; color: var(--gray); margin-left: 8px; }
-        .word-details .example { color: #555; margin-top: 4px; font-size: 0.9em; }
+        .definition-item { margin-top: 8px; margin-left: 10px; }
+        .definition-item .pos { font-style: italic; color: var(--gray); margin-right: 8px; }
+        .definition-item .meaning { font-weight: 500; }
+        .definition-item .example { color: #555; margin-top: 4px; font-size: 0.9em; }
         #quiz-container, #feedback-container { display: none; padding: 20px; margin-top: 20px; border: 1px solid #ddd; border-radius: 8px; }
         #quiz-word { font-size: 2em; font-weight: bold; text-align: center; margin-bottom: 20px; }
         #quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -33,16 +35,15 @@
         .option-btn:hover { background-color: #e0e0e0; }
         #feedback-container { background-color: #fffbe6; border-color: #ffe58f; }
         #feedback-container.correct { background-color: #e9f7ef; border-color: #a6d9b8; }
-        .feedback-word { font-size: 1.5em; }
         .feedback-actions { margin-top: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>英単語学習アプリ</h1>
+        <h1>英単語学習アプリ (複数意味対応版)</h1>
         
         <div class="controls">
-            <input type="text" id="json-files-input" value="Words_01.json" placeholder="Words_01.json, Words_02.json ...">
+            <input type="text" id="json-files-input" value="Words_01.json" placeholder="Words_01.json ...">
             <button id="load-btn" class="btn-primary">🔄 読込</button>
             <button id="export-btn" class="btn-secondary">📄 チェックした単語を保存</button>
             <button id="start-quiz-btn" class="btn-success">🧠 4択テスト開始</button>
@@ -88,8 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const undoCheckBtn = document.getElementById('undo-check-btn');
 
     // --- アプリケーションの状態管理 ---
-    let allWords = [];
-    let quizWords = [];
+    let allWords = []; // {id, word, checked, definitions: [...]} の配列
+    let quizItems = []; // {id, word, definition, checked} の配列
     let currentQuizIndex = 0;
     let lastIncorrectWordId = null;
 
@@ -99,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startQuizBtn.addEventListener('click', startQuiz);
     undoCheckBtn.addEventListener('click', undoLastCheck);
 
-    // 単語リスト内のチェックボックスイベント (イベント委任)
     wordListEl.addEventListener('change', (e) => {
         if (e.target.type === 'checkbox') {
             const wordId = parseInt(e.target.dataset.id);
@@ -125,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const dataArrays = await Promise.all(responses.map(res => res.json()));
             
-            // 複数の単語リストを統合し、重複をIDで排除
             const wordMap = new Map();
             dataArrays.flat().forEach(word => wordMap.set(word.id, word));
             allWords = Array.from(wordMap.values());
@@ -141,20 +140,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // 単語リストをHTMLに描画する関数
     function renderWordList() {
         wordListEl.innerHTML = '';
-        allWords.sort((a, b) => a.word.localeCompare(b.word)); // アルファベット順にソート
+        allWords.sort((a, b) => a.word.localeCompare(b.word)); // アルファベット順
+        
         allWords.forEach(word => {
             const li = document.createElement('li');
             li.className = 'word-item';
             if(word.checked) li.classList.add('checked');
+
+            // 複数の定義をループしてHTMLを生成
+            let definitionsHtml = '';
+            word.definitions.forEach(def => {
+                definitionsHtml += `
+                    <div class="definition-item">
+                        <div>
+                            <span class="pos">${def.pos}</span>
+                            <span class="meaning">${def.meaning}</span>
+                        </div>
+                        <div class="example">例: ${def.example}</div>
+                    </div>
+                `;
+            });
+
             li.innerHTML = `
                 <input type="checkbox" data-id="${word.id}" ${word.checked ? 'checked' : ''}>
                 <div class="word-details">
-                    <div>
-                        <span class="word">${word.word}</span>
-                        <span class="pos">${word.pos}</span>
-                    </div>
-                    <div class="meaning">${word.meaning}</div>
-                    <div class="example">例: ${word.example}</div>
+                    <div><span class="word">${word.word}</span></div>
+                    ${definitionsHtml}
                 </div>
             `;
             wordListEl.appendChild(li);
@@ -162,19 +173,16 @@ document.addEventListener('DOMContentLoaded', () => {
         wordCountEl.textContent = allWords.length;
     }
 
-    // チェックされた単語をJSONファイルとしてエクスポートする関数
+    // チェックされた単語をJSONファイルとしてエクスポート
     function exportCheckedWords() {
         const checkedWords = allWords.filter(w => w.checked);
         if (checkedWords.length === 0) return alert('エクスポートする単語がありません。');
-
+        // (エクスポートロジックは前回と同じ)
         const jsonString = JSON.stringify(checkedWords, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-
-        // ファイル名を動的に生成 (CheckWords_01.json, CheckWords_02.json...)
-        const date = new Date();
-        const timestamp = `${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}`;
+        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         a.download = `CheckWords_${timestamp}.json`;
         a.href = url;
         document.body.appendChild(a);
@@ -185,13 +193,32 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 4択テストを開始する関数
     function startQuiz() {
-        quizWords = allWords.filter(w => !w.checked);
-        if (quizWords.length < 4) return alert('テストを行うには、未チェックの単語が4つ以上必要です。');
+        const uncheckedWords = allWords.filter(w => !w.checked);
+        if (uncheckedWords.length === 0) {
+             return alert('テスト対象の単語（未チェック）がありません。');
+        }
+
+        // テスト用の「単語-意味」ペアを作成
+        quizItems = [];
+        uncheckedWords.forEach(word => {
+            word.definitions.forEach(def => {
+                quizItems.push({
+                    id: word.id, // 元の単語のID
+                    word: word.word,
+                    definition: def,
+                    checked: word.checked
+                });
+            });
+        });
+
+        if (quizItems.length < 4) {
+            return alert('テストを行うには、未チェックの単語（と意味のペア）が4つ以上必要です。');
+        }
         
-        // Fisher-Yatesシャッフルアルゴリズムで単語をランダムに並び替え
-        for (let i = quizWords.length - 1; i > 0; i--) {
+        // Fisher-Yatesシャッフル
+        for (let i = quizItems.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [quizWords[i], quizWords[j]] = [quizWords[j], quizWords[i]];
+            [quizItems[i], quizItems[j]] = [quizItems[j], quizItems[i]];
         }
         
         currentQuizIndex = 0;
@@ -203,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // クイズの問題を表示する関数
     function displayQuizQuestion() {
-        if (currentQuizIndex >= quizWords.length) {
+        if (currentQuizIndex >= quizItems.length) {
             alert('テスト終了です！お疲れ様でした。');
             listContainer.style.display = 'block';
             quizContainer.style.display = 'none';
@@ -211,19 +238,25 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const currentWord = quizWords[currentQuizIndex];
-        quizProgressEl.textContent = `4択テスト (${currentQuizIndex + 1} / ${quizWords.length})`;
-        quizWordEl.textContent = currentWord.word;
+        const currentQuizItem = quizItems[currentQuizIndex];
+        const correctAnswerDef = currentQuizItem.definition;
         
-        // 選択肢を作成
-        let options = [currentWord];
+        quizProgressEl.textContent = `4択テスト (${currentQuizIndex + 1} / ${quizItems.length})`;
+        quizWordEl.textContent = currentQuizItem.word;
+        
+        // 選択肢を作成 (正解の「意味」が基準)
+        let options = [correctAnswerDef];
         while (options.length < 4) {
+            // 他の単語からランダムに定義を1つ選ぶ
             const randomWord = allWords[Math.floor(Math.random() * allWords.length)];
-            // 重複しないように追加
-            if (!options.some(opt => opt.id === randomWord.id)) {
-                options.push(randomWord);
+            const randomDef = randomWord.definitions[Math.floor(Math.random() * randomWord.definitions.length)];
+            
+            // 意味が重複しないように追加
+            if (!options.some(opt => opt.meaning === randomDef.meaning)) {
+                options.push(randomDef);
             }
         }
+        
         // 選択肢をシャッフル
         options.sort(() => Math.random() - 0.5);
         
@@ -232,28 +265,49 @@ document.addEventListener('DOMContentLoaded', () => {
             const button = document.createElement('button');
             button.className = 'option-btn';
             button.textContent = opt.meaning;
-            button.onclick = () => handleAnswer(opt.id === currentWord.id, currentWord);
+            // 正解の「意味」と一致するかで判定
+            button.onclick = () => handleAnswer(opt.meaning === correctAnswerDef.meaning, currentQuizItem);
             quizOptionsEl.appendChild(button);
         });
     }
 
     // 回答を処理する関数
-    function handleAnswer(isCorrect, word) {
+    function handleAnswer(isCorrect, quizItem) {
         if (isCorrect) {
             feedbackContainer.style.display = 'none';
             currentQuizIndex++;
             displayQuizQuestion();
         } else {
             // 不正解の処理
-            word.checked = true;
-            lastIncorrectWordId = word.id;
-            feedbackTitle.textContent = '不正解... チェックリストに追加しました';
-            feedbackDetailsEl.innerHTML = `
-                <div><span class="word">${word.word}</span> <span class="pos">${word.pos}</span></div>
-                <div class="meaning">${word.meaning}</div>
-                <div class="example">例: ${word.example}</div>
-            `;
-            feedbackContainer.style.display = 'block';
+            const originalWord = allWords.find(w => w.id === quizItem.id);
+            if (originalWord) {
+                originalWord.checked = true; // 元の単語をチェック
+                lastIncorrectWordId = originalWord.id;
+                
+                feedbackTitle.textContent = '不正解... チェックリストに追加しました';
+
+                // 不正解だった単語の「すべての意味」を表示
+                let definitionsHtml = '';
+                originalWord.definitions.forEach(def => {
+                    // 不正解だった定義を赤字で強調
+                    const isIncorrectDef = def.meaning === quizItem.definition.meaning;
+                    definitionsHtml += `
+                        <div class="definition-item" style="${isIncorrectDef ? 'font-weight:bold; color:var(--red);' : ''}">
+                            <div>
+                                <span class="pos">${def.pos}</span>
+                                <span class="meaning">${def.meaning}</span>
+                            </div>
+                            <div class="example">例: ${def.example}</div>
+                        </div>
+                    `;
+                });
+
+                feedbackDetailsEl.innerHTML = `
+                    <div><span class="word">${originalWord.word}</span></div>
+                    ${definitionsHtml}
+                `;
+                feedbackContainer.style.display = 'block';
+            }
         }
     }
     
@@ -269,6 +323,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
+    // 初期読み込み（ファイル名を指定して自動読み込み）
+    loadWords();
 });
 </script>
 </body>
